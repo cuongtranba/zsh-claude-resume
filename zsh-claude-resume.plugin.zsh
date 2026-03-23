@@ -145,15 +145,13 @@ _zcr_complete_sessions() {
 
     if [[ -f "$index_file" ]]; then
         # Parse sessions-index.json with awk (no jq needed)
-        local id summary modified branch
+        local id summary modified branch then_epoch time_ago
         while IFS=$'\t' read -r modified id summary branch; do
             [[ -z "$id" ]] && continue
 
             # Calculate time ago from ISO date
-            local then_epoch time_ago
-            then_epoch=$(command date -j -f "%Y-%m-%dT%H:%M:%S" "${modified%%.*}" +%s 2>/dev/null) || \
-            then_epoch=$(command date -d "${modified}" +%s 2>/dev/null) || \
-            then_epoch=0
+            then_epoch=$(command date -j -f "%Y-%m-%dT%H:%M:%S" "${modified%%.*}" +%s 2>/dev/null || \
+                command date -d "${modified}" +%s 2>/dev/null || print 0)
             if (( then_epoch > 0 )); then
                 time_ago=$(_zcr_format_ago $(( now - then_epoch )))
             else
@@ -176,14 +174,11 @@ _zcr_complete_sessions() {
         ' "$index_file" | command sort -r | command head -"$ZSH_CLAUDE_RESUME_MAX_SESSIONS")
     else
         # Fallback: list JSONL files by modification time
-        local f
+        local f id file_epoch time_ago
         for f in $(command ls -t "$project_dir"/*.jsonl 2>/dev/null | command head -"$ZSH_CLAUDE_RESUME_MAX_SESSIONS"); do
-            local id="${f:t:r}"
-            local file_epoch
-            file_epoch=$(command stat -f %m "$f" 2>/dev/null) || \
-            file_epoch=$(command stat -c %Y "$f" 2>/dev/null) || \
-            file_epoch=0
-            local time_ago="?"
+            id="${f:t:r}"
+            file_epoch=$(command stat -f %m "$f" 2>/dev/null || command stat -c %Y "$f" 2>/dev/null || print 0)
+            time_ago="?"
             (( file_epoch > 0 )) && time_ago=$(_zcr_format_ago $(( now - file_epoch )))
             sessions+=("${id}:session (${time_ago})")
         done
