@@ -173,14 +173,23 @@ _zcr_complete_sessions() {
             }
         ' "$index_file" | command sort -r | command head -"$ZSH_CLAUDE_RESUME_MAX_SESSIONS")
     else
-        # Fallback: list JSONL files by modification time
-        local f id file_epoch time_ago
+        # Fallback: list JSONL files by modification time, extract summary from content
+        local f id file_epoch time_ago prompt branch desc
         for f in $(command ls -t "$project_dir"/*.jsonl 2>/dev/null | command head -"$ZSH_CLAUDE_RESUME_MAX_SESSIONS"); do
             id="${f:t:r}"
             file_epoch=$(command stat -f %m "$f" 2>/dev/null || command stat -c %Y "$f" 2>/dev/null || print 0)
             time_ago="?"
             (( file_epoch > 0 )) && time_ago=$(_zcr_format_ago $(( now - file_epoch )))
-            sessions+=("${id}:session (${time_ago})")
+
+            # Extract first real user prompt and git branch from JSONL
+            prompt=$(command grep '"promptId"' "$f" 2>/dev/null | command grep '"type":"user"' | \
+                command grep -v 'Caveat:' | command grep -v 'local-command' | command head -1 | \
+                command sed 's/.*"content"://;s/}.*//;s/^\[{[^}]*"text":"//;s/^"//;s/".*//;s/<[^>]*>//g;s/^[0-9T:.Z -]*//' | cut -c1-50)
+            branch=$(command grep -o '"gitBranch":"[^"]*"' "$f" 2>/dev/null | command head -1 | command sed 's/"gitBranch":"//;s/"//')
+
+            desc="${prompt:-no prompt}"
+            [[ -n "$branch" ]] && desc="${desc} (${time_ago}, ${branch})" || desc="${desc} (${time_ago})"
+            sessions+=("${id}:${desc}")
         done
     fi
 
